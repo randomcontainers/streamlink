@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.27.0@sha256:bde3983e9c939224420ddaf6b784cc30e09b035a4dea01f581230c50809f372e
+# check=error=true
+
+ARG BASE_IMAGE=ubuntu:26.04
+
+FROM ${BASE_IMAGE} AS build
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 python3-venv \
+ && rm -rf /var/lib/apt/lists/*
+
+ARG VERSION
+RUN --mount=type=bind,target=/src \
+    set -eu; \
+    : "${VERSION:?}"; \
+    if ! awk -v want="streamlink==${VERSION}" '$1 == want { found = 1 } END { exit !found }' /src/requirements.lock; then \
+        echo "requirements.lock does not pin streamlink==${VERSION}" >&2; exit 1; \
+    fi; \
+    venv=/usr/local/lib/streamlink; \
+    meta=/usr/local/share/randomcontainers/streamlink; \
+    python3 -m venv "$venv"; \
+    "$venv/bin/pip" install --no-cache-dir --disable-pip-version-check --no-input \
+        --require-hashes --no-deps --only-binary=:all: \
+        --report /tmp/pip-report.json -r /src/requirements.lock; \
+    installed="$("$venv/bin/streamlink" --version)"; \
+    if [ "$installed" != "streamlink ${VERSION}" ]; then \
+        echo "requirements.lock installs $installed, expected streamlink ${VERSION}" >&2; exit 1; \
+    fi; \
+    ln -s "$venv/bin/streamlink" /usr/local/bin/streamlink; \
+    mkdir -p "$meta"; \
+    printf '%s\n' "$VERSION" > "$meta/version"; \
+    cp /src/runtime-deps.ubuntu "$meta/runtime-deps"; \
+    "$venv/bin/python" /src/scripts/metadata.py /tmp/pip-report.json "$meta" /src/licenses; \
+    rm /tmp/pip-report.json
+
+FROM ${BASE_IMAGE} AS slim
+ARG DEBIAN_FRONTEND=noninteractive
+RUN --mount=type=bind,source=runtime-deps.ubuntu,target=/tmp/runtime-deps \
+    set -eu; \
+    apt-get update; \
+    xargs apt-get install -y --no-install-recommends ca-certificates tini < /tmp/runtime-deps; \
+    rm -rf /var/lib/apt/lists/*; \
+    install -d -m 1777 /work /cache
+COPY --link --from=build /usr/local/ /usr/local/
+ENV LANG=C.UTF-8 XDG_CACHE_HOME=/cache PYTHONUNBUFFERED=1
+WORKDIR /work
+USER 1000:1000
+ENTRYPOINT ["tini", "--", "streamlink"]
+CMD ["--help"]

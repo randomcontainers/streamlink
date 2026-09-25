@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1.27.0@sha256:bde3983e9c939224420ddaf6b784cc30e09b035a4dea01f581230c50809f372e
+# check=error=true
+
+ARG BASE_IMAGE=alpine:3.24
+
+FROM ${BASE_IMAGE} AS build
+RUN apk add --no-cache python3
+
+ARG VERSION
+RUN --mount=type=bind,target=/src \
+    set -eu; \
+    : "${VERSION:?}"; \
+    if ! awk -v want="streamlink==${VERSION}" '$1 == want { found = 1 } END { exit !found }' /src/requirements.lock; then \
+        echo "requirements.lock does not pin streamlink==${VERSION}" >&2; exit 1; \
+    fi; \
+    venv=/usr/local/lib/streamlink; \
+    meta=/usr/local/share/randomcontainers/streamlink; \
+    python3 -m venv "$venv"; \
+    "$venv/bin/pip" install --no-cache-dir --disable-pip-version-check --no-input \
+        --require-hashes --no-deps --only-binary=:all: \
+        --report /tmp/pip-report.json -r /src/requirements.lock; \
+    installed="$("$venv/bin/streamlink" --version)"; \
+    if [ "$installed" != "streamlink ${VERSION}" ]; then \
+        echo "requirements.lock installs $installed, expected streamlink ${VERSION}" >&2; exit 1; \
+    fi; \
+    ln -s "$venv/bin/streamlink" /usr/local/bin/streamlink; \
+    mkdir -p "$meta"; \
+    printf '%s\n' "$VERSION" > "$meta/version"; \
+    cp /src/runtime-deps.alpine "$meta/runtime-deps"; \
+    "$venv/bin/python" /src/scripts/metadata.py /tmp/pip-report.json "$meta" /src/licenses; \
+    rm /tmp/pip-report.json
+
+FROM ${BASE_IMAGE} AS slim
+RUN --mount=type=bind,source=runtime-deps.alpine,target=/tmp/runtime-deps \
+    set -eu; \
+    xargs apk add --no-cache ca-certificates tini < /tmp/runtime-deps; \
+    addgroup -g 1000 app; \
+    adduser -D -u 1000 -G app app; \
+    install -d -m 1777 /work /cache
+COPY --link --from=build /usr/local/ /usr/local/
+ENV LANG=C.UTF-8 XDG_CACHE_HOME=/cache PYTHONUNBUFFERED=1
+WORKDIR /work
+USER 1000:1000
+ENTRYPOINT ["tini", "--", "streamlink"]
+CMD ["--help"]
