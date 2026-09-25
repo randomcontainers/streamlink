@@ -1,0 +1,75 @@
+name: streamlink
+title: Streamlink
+summary: Extracts live streams from Twitch, YouTube and many other sites and saves them to a file or pipes them into a video player.
+homepage: https://streamlink.github.io/
+# Streamlink, the Python packages installed with it, and the libraries linked
+# statically into lxml (libxml2, libxslt, zlib and GNU libiconv, see licenses/).
+license: BSD-2-Clause AND BSD-3-Clause AND MIT AND Apache-2.0 AND MPL-2.0 AND ISC AND PSF-2.0 AND Unlicense AND Zlib AND LGPL-2.1-only AND LGPL-2.1-or-later
+upstream:
+  source: pypi
+  project: streamlink
+  tag-pattern: '^(\d+\.\d+\.\d+)$'
+  version-template: '{1}'
+  versioning: semver
+  version: 8.6.1
+  cooldown: 24h
+  publisher: streamlink/streamlink
+image:
+  entrypoint: [streamlink]
+  cmd: [--help]
+  env: {PYTHONUNBUFFERED: "1"}
+test:
+  - |
+    streamlink --version > version.txt
+    test "$(cat version.txt)" = "streamlink $VERSION"
+  - |
+    streamlink --plugins --json > plugins.json
+    /usr/local/lib/streamlink/bin/python3 -c 'import json; p = set(json.load(open("plugins.json"))); assert {"dash", "hls", "twitch", "youtube"} <= p, sorted(p)'
+  - |
+    /usr/local/lib/streamlink/bin/python3 -c 'import lxml.etree; from Crypto.Cipher import AES; lxml.etree.fromstring("<a/>"); AES.new(bytes(16), AES.MODE_ECB).encrypt(bytes(16))'
+  - |
+    # An HLS playlist served from localhost: stream listing as JSON, then a download to /work.
+    mkdir hls-vod
+    printf 'segment-0\n' > hls-vod/0.ts
+    printf 'segment-1\n' > hls-vod/1.ts
+    printf '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:1\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:1,\n0.ts\n#EXTINF:1,\n1.ts\n#EXT-X-ENDLIST\n' > hls-vod/index.m3u8
+    /usr/local/lib/streamlink/bin/python3 -m http.server -b 127.0.0.1 -d hls-vod 8401 > /dev/null 2>&1 &
+    server=$!
+    trap 'kill "$server"' EXIT
+    url=hls://http://127.0.0.1:8401/index.m3u8
+    streamlink --retry-streams 0.5 --retry-max 20 --json "$url" > hls-vod.json
+    /usr/local/lib/streamlink/bin/python3 -c 'import json; s = json.load(open("hls-vod.json"))["streams"]; assert s["best"]["type"] == "hls", s'
+    streamlink -o hls-vod.ts "$url" best
+    printf 'segment-0\nsegment-1\n' | cmp - hls-vod.ts
+examples:
+  - title: List the qualities a stream is available in
+    command: docker run --rm ghcr.io/randomcontainers/streamlink "https://www.twitch.tv/<channel>"
+  - title: Record a live stream to a file in the current directory
+    command: docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" ghcr.io/randomcontainers/streamlink -o recording.ts "https://www.twitch.tv/<channel>" best
+  - title: Watch a stream in a player on the host
+    command: docker run --rm ghcr.io/randomcontainers/streamlink --stdout "https://www.twitch.tv/<channel>" best | mpv -
+combos:
+  - with: [ffmpeg]
+    default: true
+    base: ffmpeg
+    summary: Streamlink with FFmpeg, which it needs for streams that deliver video and audio separately.
+    test:
+      - |
+        /usr/local/lib/streamlink/bin/python3 -c 'from streamlink import Streamlink; from streamlink.stream.ffmpegmux import FFMPEGMuxer; assert FFMPEGMuxer.command(Streamlink()), "no usable ffmpeg"; print(FFMPEGMuxer.FFMPEG_VERSION)' > ffmpeg-version.txt
+        test -s ffmpeg-version.txt
+      - |
+        # Separate video and audio renditions of lavfi test sources, which streamlink
+        # can only fetch together by muxing them with ffmpeg.
+        mkdir hls-mux
+        ffmpeg -v error -f lavfi -i testsrc=duration=2:size=160x120:rate=10 -c:v mpeg2video \
+          -f hls -hls_time 1 -hls_playlist_type vod -hls_segment_filename 'hls-mux/v%d.ts' hls-mux/video.m3u8
+        ffmpeg -v error -f lavfi -i sine=duration=2 -c:a mp2 \
+          -f hls -hls_time 1 -hls_playlist_type vod -hls_segment_filename 'hls-mux/a%d.ts' hls-mux/audio.m3u8
+        printf '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="audio",DEFAULT=YES,AUTOSELECT=YES,URI="audio.m3u8"\n#EXT-X-STREAM-INF:BANDWIDTH=300000,RESOLUTION=160x120,AUDIO="aud"\nvideo.m3u8\n' > hls-mux/index.m3u8
+        /usr/local/lib/streamlink/bin/python3 -m http.server -b 127.0.0.1 -d hls-mux 8402 > /dev/null 2>&1 &
+        server=$!
+        trap 'kill "$server"' EXIT
+        streamlink --loglevel debug --logfile hls-mux.log --retry-streams 0.5 --retry-max 20 \
+          -o hls-mux.ts hls://http://127.0.0.1:8402/index.m3u8 best
+        grep -q 'Opening stream: 120p (hls-multi)' hls-mux.log
+        ffmpeg -v error -i hls-mux.ts -map 0:v:0 -map 0:a:0 -f null -
