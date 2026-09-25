@@ -1,0 +1,24 @@
+lxml 6.1.3 links static builds of the libraries below into its extension
+modules. Its Linux wheels are built from the lxml source release with
+buildlibxml.py, which downloads these archives. The license files of each
+library are in the directory of the same name; libxslt includes libexslt.
+GNU libiconv is licensed under LGPL-2.1-or-later. The libiconv archive is
+its corresponding source, and the lxml source release has the code and build
+script to relink lxml with a modified copy.
+
+lxml 6.1.3
+  https://files.pythonhosted.org/packages/23/ad/28ecd7cb894d172f3c9c80a075eeeb2017ac62e3632cee05a5f9493547eb/lxml-6.1.3.tar.gz
+  sha256:45222d94ddd511536f3b2f7d9deae3b2339b4ce0f075f1ca25703b07cad9dd21
+zlib 1.3.2
+  https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz
+  sha256:bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16
+libiconv 1.18
+  https://ftp.gnu.org/pub/gnu/libiconv/libiconv-1.18.tar.gz
+  sha256:3b08f5f4f9b4eb82f151a7040bfd6fe6c6fb922efe4b1659c66ea933276965e8
+libxml2 2.14.6
+  https://download.gnome.org/sources/libxml2/2.14/libxml2-2.14.6.tar.xz
+  sha256:7ce458a0affeb83f0b55f1f4f9e0e55735dbfc1a9de124ee86fb4a66b597203a
+libxslt 1.1.43
+  https://download.gnome.org/sources/libxslt/1.1/libxslt-1.1.43.tar.xz
+  sha256:5a3d6b383ca5afc235b171118e90f5ff6aa27e9fea3303065231a6d403f0183a
+  patched with libxslt-1.1.43-backport1.patch from the lxml source release
