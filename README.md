@@ -13,8 +13,6 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/work" \
   ghcr.io/randomcontainers/streamlink -o recording.ts "https://www.twitch.tv/<channel>" best
 ```
 
-The same images can also be pulled as `randomcontainers.com/streamlink`.
-
 List the qualities a stream is available in:
 
 ```sh
