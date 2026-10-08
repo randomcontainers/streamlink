@@ -11,7 +11,7 @@ upstream:
   tag-pattern: '^(\d+\.\d+\.\d+)$'
   version-template: '{1}'
   versioning: semver
-  version: 8.6.1
+  version: 8.6.2
   cooldown: 24h
   publisher: streamlink/streamlink
 image:
