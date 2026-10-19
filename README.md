@@ -136,7 +136,7 @@ lxml's extension modules link static builds of libxml2 and libxslt (MIT), zlib (
 
 `latest` also contains FFmpeg, licensed under GPL-3.0-or-later. Its license files and corresponding source are described in the [ffmpeg repository](https://github.com/randomcontainers/ffmpeg#licenses).
 
-The files in this repository are available under the MIT license, see [LICENSE](LICENSE).
+The files in this repository are available under the MIT license, see [LICENSE](LICENSE), except the license texts in `licenses/`, which keep their own terms.
 
 ## Requesting a tool
 
